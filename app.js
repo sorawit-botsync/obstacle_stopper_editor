@@ -6,6 +6,7 @@ let appState = {
     showProtective: true,
     showWarning: true,
     selectedPolygon: null, // { lidar: 'front_left_lidar', type: 'protective' }
+    hiddenFields: new Set(),
 };
 
 // Canvas State
@@ -133,6 +134,9 @@ function setupEventListeners() {
     });
     document.getElementById('toggle-protective').addEventListener('change', (e) => {
         appState.showProtective = e.target.checked;
+        if (e.target.checked) {
+            appState.hiddenFields.forEach(f => { if(f.endsWith('-protective')) appState.hiddenFields.delete(f); });
+        }
         if (!e.target.checked && appState.selectedPolygon?.type === 'protective') {
             appState.selectedPolygon = null;
             updateEditorPanel();
@@ -141,6 +145,9 @@ function setupEventListeners() {
     });
     document.getElementById('toggle-warning').addEventListener('change', (e) => {
         appState.showWarning = e.target.checked;
+        if (e.target.checked) {
+            appState.hiddenFields.forEach(f => { if(f.endsWith('-warning')) appState.hiddenFields.delete(f); });
+        }
         if (!e.target.checked && appState.selectedPolygon?.type === 'warning') {
             appState.selectedPolygon = null;
             updateEditorPanel();
@@ -458,8 +465,13 @@ function initUI() {
         cb.checked = true;
         cb.value = l;
         cb.addEventListener('change', (e) => {
-            if (e.target.checked) appState.visibleLidars.add(l);
-            else appState.visibleLidars.delete(l);
+            if (e.target.checked) {
+                appState.visibleLidars.add(l);
+                appState.hiddenFields.delete(`${l}-protective`);
+                appState.hiddenFields.delete(`${l}-warning`);
+            } else {
+                appState.visibleLidars.delete(l);
+            }
             renderCanvas();
         });
         
@@ -564,6 +576,8 @@ function renderCanvas() {
             if (type === 'protective' && !appState.showProtective) return;
             if (type === 'warning' && !appState.showWarning) return;
             
+            if (appState.hiddenFields.has(`${lidar}-${type}`)) return;
+            
             const pts = getPolygonPoints(lidar, type);
             if (!pts) return;
             
@@ -586,6 +600,15 @@ function renderCanvas() {
                 appState.selectedPolygon = { lidar, type };
                 renderCanvas();
                 updateEditorPanel();
+            });
+            poly.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                appState.hiddenFields.add(`${lidar}-${type}`);
+                if (isSelected) {
+                    appState.selectedPolygon = null;
+                    updateEditorPanel();
+                }
+                renderCanvas();
             });
             
             gPolygons.appendChild(poly);
