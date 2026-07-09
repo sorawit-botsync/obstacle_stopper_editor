@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obstacle Stopper Editor</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- js-yaml via CDN for parsing and stringifying YAML -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Stopper Editor</h2>
+                <div class="actions">
+                    <input type="file" id="file-input" accept=".yaml,.yml" class="hidden">
+                    <button id="btn-import" class="btn btn-secondary">Import</button>
+                    <button id="btn-load" class="btn btn-secondary">Reload</button>
+                    <button id="btn-export" class="btn btn-primary">Export</button>
+                </div>
+            </div>
+
+            <!-- Global Controls -->
+            <div class="panel">
+                <h3>View Controls</h3>
+                <div class="control-group">
+                    <label for="state-select">Active State</label>
+                    <select id="state-select" class="input-modern"></select>
+                </div>
+                <div class="control-group">
+                    <label>Visible Lidars</label>
+                    <div id="lidar-filters" class="checkbox-list"></div>
+                </div>
+                <div class="control-group">
+                    <label>Visible Fields</label>
+                    <div class="checkbox-list">
+                        <label class="checkbox-item"><input type="checkbox" id="toggle-protective" checked> Protective (Green)</label>
+                        <label class="checkbox-item"><input type="checkbox" id="toggle-warning" checked> Warning (Yellow)</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contextual Editor -->
+            <div class="panel" id="editor-panel">
+                <h3>Polygon Editor</h3>
+                <p id="editor-empty-state" class="text-muted">Select a polygon on the canvas to edit.</p>
+                <div id="editor-content" class="hidden">
+                    <div class="badge" id="editor-badge">Front Left - Protective</div>
+                    
+                    <div class="field-limits" id="standard-limits-container">
+                        <h4>Field Limits</h4>
+                        <div class="grid-2">
+                            <div class="input-group"><label>front_max</label><input type="number" step="0.01" id="input-front-max"></div>
+                            <div class="input-group"><label>front_min</label><input type="number" step="0.01" id="input-front-min"></div>
+                            <div class="input-group"><label>rear_max</label><input type="number" step="0.01" id="input-rear-max"></div>
+                            <div class="input-group"><label>rear_min</label><input type="number" step="0.01" id="input-rear-min"></div>
+                            <div class="input-group"><label>left_max</label><input type="number" step="0.01" id="input-left-max"></div>
+                            <div class="input-group"><label>left_min</label><input type="number" step="0.01" id="input-left-min"></div>
+                            <div class="input-group"><label>right_max</label><input type="number" step="0.01" id="input-right-max"></div>
+                            <div class="input-group"><label>right_min</label><input type="number" step="0.01" id="input-right-min"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="field-limits" id="z-limits-container">
+                        <h4>3D Z-Limits</h4>
+                        <div class="grid-2">
+                            <div class="input-group"><label>z_min</label><input type="number" step="0.01" id="input-min-z"></div>
+                            <div class="input-group"><label>z_max</label><input type="number" step="0.01" id="input-max-z"></div>
+                        </div>
+                    </div>
+
+                    <div class="vertex-list">
+                        <h4>Vertices (X, Y)</h4>
+                        <div id="vertex-inputs-container"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Canvas Area -->
+        <main class="workspace">
+            <div id="welcome-screen" class="welcome-screen">
+                <h2>Obstacle Stopper Editor</h2>
+                <p>Import a YAML file to get started.</p>
+                <button id="btn-import-large" class="btn btn-primary" style="padding: 12px 24px; font-size: 1.1rem;">Import YAML File</button>
+                <ul class="features-list">
+                    <li>Visual drag-and-drop polygon editing</li>
+                    <li>Live coordinate updates w.r.t base_link (0,0)</li>
+                    <li>Support for 3D Lidar Z-Limits</li>
+                    <li>Auto-saves progress to browser memory</li>
+                </ul>
+            </div>
+            
+            <div id="editor-workspace" class="editor-workspace hidden">
+                <div class="toolbar">
+                <div class="zoom-controls">
+                    <button id="btn-zoom-in" class="icon-btn">+</button>
+                    <span id="zoom-level">100%</span>
+                    <button id="btn-zoom-out" class="icon-btn">-</button>
+                    <button id="btn-reset-view" class="icon-btn">Reset</button>
+                </div>
+                <div class="legend">
+                    <span class="legend-item"><span class="color-box bg-green"></span> Protective</span>
+                    <span class="legend-item"><span class="color-box bg-yellow"></span> Warning</span>
+                    <span class="legend-item"><span class="color-box bg-blue"></span> Footprint</span>
+                </div>
+            </div>
+            
+            <div class="svg-container" id="svg-wrapper">
+                <svg id="canvas" width="100%" height="100%">
+                    <g id="grid-group"></g>
+                    <g id="axes-group">
+                        <line id="axis-x" class="axis" x1="0" y1="0" x2="0" y2="0" />
+                        <line id="axis-y" class="axis" x1="0" y1="0" x2="0" y2="0" />
+                        <text id="label-origin" x="10" y="20" class="axis-label">base_link (0,0)</text>
+                        <text id="label-x" x="10" y="20" class="axis-label">+X (Front)</text>
+                        <text id="label-y" x="10" y="20" class="axis-label">+Y (Left)</text>
+                    </g>
+                    <g id="footprint-group"></g>
+                    <g id="polygons-group"></g>
+                    <g id="vertices-group"></g>
+                </svg>
+            </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modal for export -->
+    <div id="export-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Exported YAML</h3>
+                <button id="btn-close-modal" class="icon-btn">×</button>
+            </div>
+            <textarea id="export-textarea" readonly></textarea>
+            <div class="modal-footer">
+                <button id="btn-copy-yaml" class="btn btn-primary">Copy to Clipboard</button>
+                <button id="btn-download-yaml" class="btn btn-secondary">Download .yaml</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
