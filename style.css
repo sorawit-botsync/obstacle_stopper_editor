@@ -47,6 +47,12 @@ body {
     box-shadow: 2px 0 10px rgba(0,0,0,0.3);
 }
 
+.right-sidebar {
+    border-right: none;
+    border-left: 1px solid var(--border-color);
+    box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+}
+
 .sidebar-header {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);

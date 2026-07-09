@@ -23,26 +23,6 @@
                 </div>
             </div>
 
-            <!-- Global Controls -->
-            <div class="panel">
-                <h3>View Controls</h3>
-                <div class="control-group">
-                    <label for="state-select">Active State</label>
-                    <select id="state-select" class="input-modern"></select>
-                </div>
-                <div class="control-group">
-                    <label>Visible Lidars</label>
-                    <div id="lidar-filters" class="checkbox-list"></div>
-                </div>
-                <div class="control-group">
-                    <label>Visible Fields</label>
-                    <div class="checkbox-list">
-                        <label class="checkbox-item"><input type="checkbox" id="toggle-protective" checked> Protective (Green)</label>
-                        <label class="checkbox-item"><input type="checkbox" id="toggle-warning" checked> Warning (Yellow)</label>
-                    </div>
-                </div>
-            </div>
-
             <!-- State Operations -->
             <div class="panel">
                 <h3>State Operations</h3>
@@ -153,6 +133,28 @@
             </div>
             </div>
         </main>
+        
+        <!-- Right Sidebar -->
+        <aside class="sidebar right-sidebar">
+            <div class="panel">
+                <h3>View Controls</h3>
+                <div class="control-group">
+                    <label for="state-select">Active State</label>
+                    <select id="state-select" class="input-modern"></select>
+                </div>
+                <div class="control-group">
+                    <label>Visible Lidars</label>
+                    <div id="lidar-filters" class="checkbox-list"></div>
+                </div>
+                <div class="control-group">
+                    <label>Visible Fields</label>
+                    <div class="checkbox-list">
+                        <label class="checkbox-item"><input type="checkbox" id="toggle-protective" checked> Protective (Green)</label>
+                        <label class="checkbox-item"><input type="checkbox" id="toggle-warning" checked> Warning (Yellow)</label>
+                    </div>
+                </div>
+            </div>
+        </aside>
     </div>
     
     <!-- Modal for export -->
