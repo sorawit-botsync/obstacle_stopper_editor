@@ -148,6 +148,124 @@ function setupEventListeners() {
         renderCanvas();
     });
     
+    // Add State UI
+    const addStateLidarContainer = document.getElementById('add-state-lidars-container');
+    if (addStateLidarContainer) {
+        addStateLidarContainer.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox' && typeof updateCopyFromDropdown === 'function') {
+                const checkboxes = addStateLidarContainer.querySelectorAll('input[type="checkbox"]:checked');
+                const selectedLidars = Array.from(checkboxes).map(cb => cb.value);
+                updateCopyFromDropdown(selectedLidars);
+            }
+        });
+    }
+
+    document.getElementById('btn-add-state').addEventListener('click', () => {
+        const container = document.getElementById('add-state-lidars-container');
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+        const selectedLidars = Array.from(checkboxes).map(cb => cb.value);
+        const copyFrom = document.getElementById('add-state-copy-from').value;
+        const newStateCode = document.getElementById('add-state-code').value.trim();
+        
+        if (selectedLidars.length === 0 || !newStateCode) {
+            alert('Please select at least one lidar and enter a state code.');
+            return;
+        }
+        
+        let changed = false;
+        
+        selectedLidars.forEach(lidarName => {
+            if (!yamlData || !yamlData.obstacle_stopper_params || !yamlData.obstacle_stopper_params.lidars[lidarName]) return;
+            
+            const statesObj = yamlData.obstacle_stopper_params.lidars[lidarName].states;
+            if (!statesObj) return;
+            
+            if (statesObj[newStateCode]) {
+                console.warn(`State ${newStateCode} already exists for ${lidarName}! Skipping.`);
+                return;
+            }
+            
+            const existingStates = Object.keys(statesObj).sort();
+            if (existingStates.length === 0) return;
+            
+            let neighborCode = existingStates[existingStates.length - 1];
+            if (copyFrom !== 'auto' && existingStates.includes(copyFrom)) {
+                neighborCode = copyFrom;
+            } else {
+                const newCodeNum = parseInt(newStateCode);
+                if (!isNaN(newCodeNum)) {
+                    let minDiff = Infinity;
+                    existingStates.forEach(code => {
+                        const codeNum = parseInt(code);
+                        if (!isNaN(codeNum)) {
+                            const diff = Math.abs(codeNum - newCodeNum);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                neighborCode = code;
+                            }
+                        }
+                    });
+                }
+            }
+            
+            const neighborState = statesObj[neighborCode];
+            statesObj[newStateCode] = JSON.parse(JSON.stringify(neighborState));
+            changed = true;
+        });
+        
+        if (changed) {
+            saveToLocal();
+            initUI();
+            
+            const stateSelect = document.getElementById('state-select');
+            if (Array.from(stateSelect.options).some(opt => opt.value === newStateCode)) {
+                appState.selectedStateCode = newStateCode;
+                stateSelect.value = newStateCode;
+                renderCanvas();
+                updateEditorPanel();
+            }
+        }
+        
+        document.getElementById('add-state-code').value = '';
+    });
+    
+    document.getElementById('btn-remove-state').addEventListener('click', () => {
+        const container = document.getElementById('add-state-lidars-container');
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+        const selectedLidars = Array.from(checkboxes).map(cb => cb.value);
+        const stateCode = document.getElementById('add-state-code').value.trim();
+        
+        if (selectedLidars.length === 0 || !stateCode) {
+            alert('Please select at least one lidar and enter the state code to remove.');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to remove state ${stateCode} from the selected lidars?`)) return;
+        
+        let changed = false;
+        
+        selectedLidars.forEach(lidarName => {
+            if (!yamlData || !yamlData.obstacle_stopper_params || !yamlData.obstacle_stopper_params.lidars[lidarName]) return;
+            const statesObj = yamlData.obstacle_stopper_params.lidars[lidarName].states;
+            if (statesObj && statesObj[stateCode]) {
+                delete statesObj[stateCode];
+                changed = true;
+            }
+        });
+        
+        if (changed) {
+            saveToLocal();
+            
+            if (appState.selectedStateCode === stateCode) {
+                appState.selectedStateCode = null;
+                appState.selectedPolygon = null;
+            }
+            initUI();
+        }
+        
+        document.getElementById('add-state-code').value = '';
+    });
+    
     // Export UI
     document.getElementById('btn-export').addEventListener('click', showExport);
     document.getElementById('btn-close-modal').addEventListener('click', () => document.getElementById('export-modal').classList.add('hidden'));
@@ -225,6 +343,44 @@ function reloadOriginalYAML() {
     }
 }
 
+function updateCopyFromDropdown(selectedLidars) {
+    const copySelect = document.getElementById('add-state-copy-from');
+    if (!copySelect || !yamlData || !yamlData.obstacle_stopper_params) return;
+    
+    let existingStatesSet = new Set();
+    
+    if (Array.isArray(selectedLidars)) {
+        selectedLidars.forEach(lidarName => {
+            const lData = yamlData.obstacle_stopper_params.lidars[lidarName];
+            if (lData && lData.states) {
+                Object.keys(lData.states).forEach(s => existingStatesSet.add(s));
+            }
+        });
+    } else {
+        // Fallback if string is passed
+        const lData = yamlData.obstacle_stopper_params.lidars[selectedLidars];
+        if (lData && lData.states) {
+            Object.keys(lData.states).forEach(s => existingStatesSet.add(s));
+        }
+    }
+    
+    const existingStates = Array.from(existingStatesSet).sort();
+    
+    const currentSelection = copySelect.value;
+    
+    copySelect.innerHTML = '<option value="auto">Auto (Closest Neighbor)</option>';
+    existingStates.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = `Copy from: ${s}`;
+        copySelect.appendChild(opt);
+    });
+    
+    if (currentSelection === 'auto' || existingStates.includes(currentSelection)) {
+        copySelect.value = currentSelection;
+    }
+}
+
 function initUI() {
     if (!yamlData || !yamlData.obstacle_stopper_params || !yamlData.obstacle_stopper_params.lidars) return;
     
@@ -238,6 +394,30 @@ function initUI() {
     }
     
     const lidars = Object.keys(yamlData.obstacle_stopper_params.lidars);
+    
+    const addStateLidarContainer = document.getElementById('add-state-lidars-container');
+    if (addStateLidarContainer) {
+        const currentCheckboxes = addStateLidarContainer.querySelectorAll('input[type="checkbox"]:checked');
+        const currentLidars = Array.from(currentCheckboxes).map(cb => cb.value);
+        
+        addStateLidarContainer.innerHTML = '';
+        lidars.forEach(l => {
+            const label = document.createElement('label');
+            label.className = 'checkbox-item';
+            
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = l;
+            cb.checked = currentLidars.length === 0 ? true : currentLidars.includes(l);
+            
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(l));
+            addStateLidarContainer.appendChild(label);
+        });
+        
+        const newCheckboxes = addStateLidarContainer.querySelectorAll('input[type="checkbox"]:checked');
+        updateCopyFromDropdown(Array.from(newCheckboxes).map(cb => cb.value));
+    }
     
     // Collect all unique states
     let statesSet = new Set();
@@ -450,15 +630,30 @@ function updateEditorPanel() {
     if (type === 'footprint') {
         document.getElementById('editor-badge').textContent = `Robot Footprint`;
         document.getElementById('editor-badge').className = `badge bg-blue`;
+        document.getElementById('threshold-container').classList.add('hidden');
         document.getElementById('standard-limits-container').classList.add('hidden');
         document.getElementById('z-limits-container').classList.add('hidden');
     } else {
         document.getElementById('editor-badge').textContent = `${lidar} - ${type}`;
         document.getElementById('editor-badge').className = `badge bg-${type === 'protective' ? 'green' : 'yellow'}`;
+        document.getElementById('threshold-container').classList.remove('hidden');
         document.getElementById('standard-limits-container').classList.remove('hidden');
         document.getElementById('z-limits-container').classList.remove('hidden');
         
         const stateObj = yamlData.obstacle_stopper_params.lidars[lidar].states[appState.selectedStateCode];
+        
+        // Threshold
+        const thresholdInput = document.getElementById('input-obstacle-threshold');
+        thresholdInput.value = stateObj.obstacle_point_threshold !== undefined ? stateObj.obstacle_point_threshold : '';
+        thresholdInput.onchange = (e) => {
+            const val = parseInt(e.target.value);
+            if (isNaN(val)) {
+                delete stateObj.obstacle_point_threshold;
+            } else {
+                stateObj.obstacle_point_threshold = val;
+            }
+            saveToLocal();
+        };
         
         // Limits
         const limitsKey = type === 'protective' ? 'protective_field_sizes' : 'warning_field_sizes';
