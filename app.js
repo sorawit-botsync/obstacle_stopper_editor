@@ -313,6 +313,16 @@ function screenToRobot(clientX, clientY) {
     return { x, y };
 }
 
+function sqr(x) { return x * x; }
+function dist2(v, w) { return sqr(v[0] - w[0]) + sqr(v[1] - w[1]); }
+function distToSegmentSquared(p, v, w) {
+    const l2 = dist2(v, w);
+    if (l2 === 0) return dist2([p.x, p.y], v);
+    let t = ((p.x - v[0]) * (w[0] - v[0]) + (p.y - v[1]) * (w[1] - v[1])) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return dist2([p.x, p.y], [v[0] + t * (w[0] - v[0]), v[1] + t * (w[1] - v[1])]);
+}
+
 function saveToLocal() {
     if (!yamlData) return;
     const yamlString = jsyaml.dump(yamlData, { indent: 2, lineWidth: -1 });
@@ -546,6 +556,32 @@ function renderCanvas() {
             renderCanvas();
             updateEditorPanel();
         });
+        poly.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isSelected) {
+                appState.selectedPolygon = { lidar: 'global', type: 'footprint' };
+                renderCanvas();
+                updateEditorPanel();
+                return;
+            }
+            const rCoord = screenToRobot(e.clientX, e.clientY);
+            let minSubDist = Infinity;
+            let insertIdx = -1;
+            for (let i = 0; i < fp.length; i++) {
+                const p1 = fp[i];
+                const p2 = fp[(i + 1) % fp.length];
+                const dist = distToSegmentSquared(rCoord, p1, p2);
+                if (dist < minSubDist) {
+                    minSubDist = dist;
+                    insertIdx = i + 1;
+                }
+            }
+            fp.splice(insertIdx, 0, [rCoord.x, rCoord.y]);
+            saveToLocal();
+            renderCanvas();
+            updateEditorPanel();
+        });
         
         gFootprint.appendChild(poly);
         
@@ -609,6 +645,32 @@ function renderCanvas() {
                     updateEditorPanel();
                 }
                 renderCanvas();
+            });
+            poly.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isSelected) {
+                    appState.selectedPolygon = { lidar, type };
+                    renderCanvas();
+                    updateEditorPanel();
+                    return;
+                }
+                const rCoord = screenToRobot(e.clientX, e.clientY);
+                let minSubDist = Infinity;
+                let insertIdx = -1;
+                for (let i = 0; i < pts.length; i++) {
+                    const p1 = pts[i];
+                    const p2 = pts[(i + 1) % pts.length];
+                    const dist = distToSegmentSquared(rCoord, p1, p2);
+                    if (dist < minSubDist) {
+                        minSubDist = dist;
+                        insertIdx = i + 1;
+                    }
+                }
+                pts.splice(insertIdx, 0, [rCoord.x, rCoord.y]);
+                saveToLocal();
+                renderCanvas();
+                updateEditorPanel();
             });
             
             gPolygons.appendChild(poly);
