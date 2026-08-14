@@ -35,6 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
     centerCanvas();
     setupEventListeners();
     loadYAML();
+
+    // Collapsible section headers — event delegation on the editor panel
+    document.getElementById('editor-panel').addEventListener('click', (e) => {
+        const h4 = e.target.closest('.field-limits > h4, .vertex-list > h4');
+        if (!h4) return;
+        const section = h4.parentElement;
+        section.classList.toggle('collapsed');
+    });
 });
 
 function centerCanvas() {
@@ -402,9 +410,16 @@ function updateCopyFromDropdown(selectedLidars) {
 function initUI() {
     if (!yamlData || !yamlData.obstacle_stopper_params || !yamlData.obstacle_stopper_params.lidars) return;
     
+    const isFirstLoad = document.getElementById('editor-workspace').classList.contains('hidden');
+    
     // Hide Welcome Screen
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('editor-workspace').classList.remove('hidden');
+    
+    // Re-center now that the SVG wrapper has real dimensions
+    if (isFirstLoad) {
+        centerCanvas();
+    }
     
     appState.selectedPolygon = null;
     if (document.getElementById('editor-content')) {
@@ -737,15 +752,21 @@ function renderCanvas() {
 function updateEditorPanel() {
     const emptyState = document.getElementById('editor-empty-state');
     const content = document.getElementById('editor-content');
+    const vertexEmptyState = document.getElementById('vertex-empty-state');
+    const vertexPanelContent = document.getElementById('vertex-panel-content');
     
     if (!appState.selectedPolygon) {
         emptyState.classList.remove('hidden');
         content.classList.add('hidden');
+        vertexEmptyState.classList.remove('hidden');
+        vertexPanelContent.classList.add('hidden');
         return;
     }
     
     emptyState.classList.add('hidden');
     content.classList.remove('hidden');
+    vertexEmptyState.classList.add('hidden');
+    vertexPanelContent.classList.remove('hidden');
     
     const { lidar, type } = appState.selectedPolygon;
     
@@ -862,6 +883,18 @@ function updateEditorPanel() {
             const inpY = document.createElement('input');
             inpY.type = 'number'; inpY.step = '0.01';
             inpY.value = p[1];
+            
+            const onFocus = () => {
+                appState.selectedVertexIndex = idx;
+                highlightActiveVertex();
+                // Update row highlights without rebuilding the whole list
+                vContainer.querySelectorAll('.vertex-row').forEach((r, i) => {
+                    r.className = `vertex-row${i === idx ? ' vertex-row-active' : ''}`;
+                });
+            };
+            
+            inpX.addEventListener('focus', onFocus);
+            inpY.addEventListener('focus', onFocus);
             
             const updatePt = () => {
                 pts[idx][0] = parseFloat(inpX.value);

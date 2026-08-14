@@ -51,37 +51,38 @@
                     
                     <div class="field-limits" id="threshold-container">
                         <h4>State Properties</h4>
-                        <div class="input-group">
-                            <label>obstacle_point_threshold</label>
-                            <input type="number" step="1" id="input-obstacle-threshold">
+                        <div class="collapsible-body">
+                            <div class="input-group">
+                                <label>obstacle_point_threshold</label>
+                                <input type="number" step="1" id="input-obstacle-threshold">
+                            </div>
                         </div>
                     </div>
                     
                     <div class="field-limits" id="standard-limits-container">
                         <h4>Field Limits</h4>
-                        <div class="grid-2">
-                            <div class="input-group"><label>front_max</label><input type="number" step="0.01" id="input-front-max"></div>
-                            <div class="input-group"><label>front_min</label><input type="number" step="0.01" id="input-front-min"></div>
-                            <div class="input-group"><label>rear_max</label><input type="number" step="0.01" id="input-rear-max"></div>
-                            <div class="input-group"><label>rear_min</label><input type="number" step="0.01" id="input-rear-min"></div>
-                            <div class="input-group"><label>left_max</label><input type="number" step="0.01" id="input-left-max"></div>
-                            <div class="input-group"><label>left_min</label><input type="number" step="0.01" id="input-left-min"></div>
-                            <div class="input-group"><label>right_max</label><input type="number" step="0.01" id="input-right-max"></div>
-                            <div class="input-group"><label>right_min</label><input type="number" step="0.01" id="input-right-min"></div>
+                        <div class="collapsible-body">
+                            <div class="grid-2">
+                                <div class="input-group"><label>front_max</label><input type="number" step="0.01" id="input-front-max"></div>
+                                <div class="input-group"><label>front_min</label><input type="number" step="0.01" id="input-front-min"></div>
+                                <div class="input-group"><label>rear_max</label><input type="number" step="0.01" id="input-rear-max"></div>
+                                <div class="input-group"><label>rear_min</label><input type="number" step="0.01" id="input-rear-min"></div>
+                                <div class="input-group"><label>left_max</label><input type="number" step="0.01" id="input-left-max"></div>
+                                <div class="input-group"><label>left_min</label><input type="number" step="0.01" id="input-left-min"></div>
+                                <div class="input-group"><label>right_max</label><input type="number" step="0.01" id="input-right-max"></div>
+                                <div class="input-group"><label>right_min</label><input type="number" step="0.01" id="input-right-min"></div>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="field-limits" id="z-limits-container">
                         <h4>3D Z-Limits</h4>
-                        <div class="grid-2">
-                            <div class="input-group"><label>z_min</label><input type="number" step="0.01" id="input-min-z"></div>
-                            <div class="input-group"><label>z_max</label><input type="number" step="0.01" id="input-max-z"></div>
+                        <div class="collapsible-body">
+                            <div class="grid-2">
+                                <div class="input-group"><label>z_min</label><input type="number" step="0.01" id="input-min-z"></div>
+                                <div class="input-group"><label>z_max</label><input type="number" step="0.01" id="input-max-z"></div>
+                            </div>
                         </div>
-                    </div>
-
-                    <div class="vertex-list">
-                        <h4>Vertices (X, Y)</h4>
-                        <div id="vertex-inputs-container"></div>
                     </div>
                 </div>
             </div>
@@ -164,6 +165,17 @@
                     <div class="checkbox-list">
                         <label class="checkbox-item"><input type="checkbox" id="toggle-protective" checked> Protective (Green)</label>
                         <label class="checkbox-item"><input type="checkbox" id="toggle-warning" checked> Warning (Yellow)</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vertices Editor -->
+            <div class="panel" id="vertex-panel">
+                <h3>Vertices (X, Y)</h3>
+                <p id="vertex-empty-state" class="text-muted">Select a polygon to edit vertices.</p>
+                <div id="vertex-panel-content" class="hidden">
+                    <div class="vertex-list">
+                        <div id="vertex-inputs-container"></div>
                     </div>
                 </div>
             </div>

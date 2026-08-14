@@ -53,6 +53,12 @@ body {
     box-shadow: -2px 0 10px rgba(0,0,0,0.3);
 }
 
+#vertex-panel {
+    flex: 1;
+    overflow-y: auto;
+    border-bottom: none;
+}
+
 .sidebar-header {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
@@ -179,18 +185,54 @@ body {
     background: rgba(0,0,0,0.15);
     padding: 12px;
     border-radius: 8px;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
+    overflow: hidden;
 }
 
+.field-limits h4,
+.vertex-list h4 {
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+    padding-bottom: 10px;
+}
 .field-limits h4 {
     font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin-bottom: 12px;
 }
 .vertex-list h4 {
     font-size: 1rem;
+}
+
+.field-limits h4::after,
+.vertex-list h4::after {
+    content: '▾';
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform 0.2s ease;
     color: var(--text-secondary);
-    margin-bottom: 12px;
+}
+
+.field-limits.collapsed h4::after,
+.vertex-list.collapsed h4::after {
+    transform: rotate(-90deg);
+}
+
+.field-limits .collapsible-body,
+.vertex-list .collapsible-body {
+    overflow: hidden;
+    max-height: 600px;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+    opacity: 1;
+}
+
+.field-limits.collapsed .collapsible-body,
+.vertex-list.collapsed .collapsible-body {
+    max-height: 0;
+    opacity: 0;
 }
 
 .grid-2 {
