@@ -182,8 +182,13 @@ body {
     margin-bottom: 20px;
 }
 
-.field-limits h4, .vertex-list h4 {
+.field-limits h4 {
     font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+.vertex-list h4 {
+    font-size: 1rem;
     color: var(--text-secondary);
     margin-bottom: 12px;
 }
@@ -222,14 +227,23 @@ body {
 
 .vertex-row {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     margin-bottom: 8px;
     align-items: center;
+    min-width: 0;
 }
 .vertex-label {
-    font-size: 0.75rem;
-    width: 15px;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    width: 18px;
     color: var(--text-secondary);
+}
+
+.vertex-row input {
+    flex: 1;
+    min-width: 0;
+    width: 0;
+    font-size: 1rem;
 }
 
 /* Workspace / SVG area */

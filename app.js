@@ -598,6 +598,14 @@ function renderCanvas() {
                     e.stopPropagation();
                     canvasState.dragVertexInfo = { lidar: 'global', type: 'footprint', index: idx };
                 });
+                circle.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    if (fp.length <= 3) return; // keep minimum 3 vertices
+                    fp.splice(idx, 1);
+                    saveToLocal();
+                    renderCanvas();
+                    updateEditorPanel();
+                });
                 
                 gVertices.appendChild(circle);
             });
@@ -688,6 +696,14 @@ function renderCanvas() {
                     circle.addEventListener('mousedown', (e) => {
                         e.stopPropagation();
                         canvasState.dragVertexInfo = { lidar, type, index: idx };
+                    });
+                    circle.addEventListener('dblclick', (e) => {
+                        e.stopPropagation();
+                        if (pts.length <= 3) return; // keep minimum 3 vertices
+                        pts.splice(idx, 1);
+                        saveToLocal();
+                        renderCanvas();
+                        updateEditorPanel();
                     });
                     
                     gVertices.appendChild(circle);
