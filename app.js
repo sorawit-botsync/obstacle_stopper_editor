@@ -7,6 +7,7 @@ let appState = {
     showWarning: true,
     selectedPolygon: null, // { lidar: 'front_left_lidar', type: 'protective' }
     hiddenFields: new Set(),
+    selectedVertexIndex: null, // index of highlighted vertex
 };
 
 // Canvas State
@@ -553,6 +554,7 @@ function renderCanvas() {
         poly.addEventListener('click', (e) => {
             e.stopPropagation();
             appState.selectedPolygon = { lidar: 'global', type: 'footprint' };
+            appState.selectedVertexIndex = null;
             renderCanvas();
             updateEditorPanel();
         });
@@ -592,16 +594,21 @@ function renderCanvas() {
                 circle.setAttribute('cx', sc.cx);
                 circle.setAttribute('cy', sc.cy);
                 circle.setAttribute('r', '4');
-                circle.setAttribute('class', 'vertex-handle');
+                const isActiveV = appState.selectedVertexIndex === idx;
+                circle.setAttribute('class', `vertex-handle${isActiveV ? ' vertex-handle-active' : ''}`);
                 
                 circle.addEventListener('mousedown', (e) => {
                     e.stopPropagation();
                     canvasState.dragVertexInfo = { lidar: 'global', type: 'footprint', index: idx };
+                    appState.selectedVertexIndex = idx;
+                    renderCanvas();
+                    updateEditorPanel();
                 });
                 circle.addEventListener('dblclick', (e) => {
                     e.stopPropagation();
                     if (fp.length <= 3) return; // keep minimum 3 vertices
                     fp.splice(idx, 1);
+                    appState.selectedVertexIndex = null;
                     saveToLocal();
                     renderCanvas();
                     updateEditorPanel();
@@ -642,6 +649,7 @@ function renderCanvas() {
             poly.addEventListener('click', (e) => {
                 e.stopPropagation(); // Prevent map drag
                 appState.selectedPolygon = { lidar, type };
+                appState.selectedVertexIndex = null;
                 renderCanvas();
                 updateEditorPanel();
             });
@@ -691,16 +699,21 @@ function renderCanvas() {
                     circle.setAttribute('cx', sc.cx);
                     circle.setAttribute('cy', sc.cy);
                     circle.setAttribute('r', '4');
-                    circle.setAttribute('class', 'vertex-handle');
+                    const isActiveV = appState.selectedVertexIndex === idx;
+                    circle.setAttribute('class', `vertex-handle${isActiveV ? ' vertex-handle-active' : ''}`);
                     
                     circle.addEventListener('mousedown', (e) => {
                         e.stopPropagation();
                         canvasState.dragVertexInfo = { lidar, type, index: idx };
+                        appState.selectedVertexIndex = idx;
+                        renderCanvas();
+                        updateEditorPanel();
                     });
                     circle.addEventListener('dblclick', (e) => {
                         e.stopPropagation();
                         if (pts.length <= 3) return; // keep minimum 3 vertices
                         pts.splice(idx, 1);
+                        appState.selectedVertexIndex = null;
                         saveToLocal();
                         renderCanvas();
                         updateEditorPanel();
@@ -823,11 +836,16 @@ function updateEditorPanel() {
     if (pts) {
         pts.forEach((p, idx) => {
             const row = document.createElement('div');
-            row.className = 'vertex-row';
+            const isActive = appState.selectedVertexIndex === idx;
+            row.className = `vertex-row${isActive ? ' vertex-row-active' : ''}`;
             
             const lbl = document.createElement('span');
             lbl.className = 'vertex-label';
             lbl.textContent = idx;
+            if (isActive) {
+                // Scroll into view after DOM is painted
+                requestAnimationFrame(() => row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+            }
             
             const inpX = document.createElement('input');
             inpX.type = 'number'; inpX.step = '0.01';

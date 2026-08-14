@@ -379,6 +379,19 @@ body {
 .vertex-handle:hover {
     r: 6;
 }
+.vertex-handle-active {
+    fill: #f59e0b;
+    stroke: #fff;
+    stroke-width: 2;
+    r: 6;
+}
+
+.vertex-row-active {
+    background: rgba(245, 158, 11, 0.12);
+    border-left: 3px solid #f59e0b;
+    padding-left: 4px;
+    border-radius: 4px;
+}
 
 /* Modal */
 .modal {
