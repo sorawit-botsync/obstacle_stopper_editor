@@ -510,6 +510,14 @@ function getPolygonPoints(lidarName, type) {
     return null;
 }
 
+// Lightweight update: just restyle existing vertex circles without recreating them
+function highlightActiveVertex() {
+    Array.from(gVertices.children).forEach((el, i) => {
+        const isActive = appState.selectedVertexIndex === i;
+        el.setAttribute('class', `vertex-handle${isActive ? ' vertex-handle-active' : ''}`);
+    });
+}
+
 function renderCanvas() {
     if (!yamlData) return;
     
@@ -601,7 +609,7 @@ function renderCanvas() {
                     e.stopPropagation();
                     canvasState.dragVertexInfo = { lidar: 'global', type: 'footprint', index: idx };
                     appState.selectedVertexIndex = idx;
-                    renderCanvas();
+                    highlightActiveVertex();
                     updateEditorPanel();
                 });
                 circle.addEventListener('dblclick', (e) => {
@@ -706,7 +714,7 @@ function renderCanvas() {
                         e.stopPropagation();
                         canvasState.dragVertexInfo = { lidar, type, index: idx };
                         appState.selectedVertexIndex = idx;
-                        renderCanvas();
+                        highlightActiveVertex();
                         updateEditorPanel();
                     });
                     circle.addEventListener('dblclick', (e) => {
