@@ -48,9 +48,48 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function centerCanvas() {
-    const rect = svgWrapper.getBoundingClientRect();
+    // Use the main pane (half the width while comparing)
+    const rect = svg.getBoundingClientRect();
     canvasState.offsetX = rect.width / 2;
     canvasState.offsetY = rect.height / 2;
+}
+
+// Center both panes on the content and zoom so everything fits
+function fitToView() {
+    if (!yamlData) return;
+    const pts = [];
+    const addSet = (data) => {
+        const params = data && data.obstacle_stopper_params;
+        if (!params) return;
+        (params.global_defaults?.robot_footprint || []).forEach(p => pts.push(p));
+        Object.keys(params.lidars || {}).forEach(l => {
+            if (!appState.visibleLidars.has(l)) return;
+            const st = params.lidars[l].states?.[appState.selectedStateCode];
+            if (!st) return;
+            [st.protective_fields, st.warning_fields].forEach(f => {
+                if (f && f[0] && f[0].points) f[0].points.forEach(p => pts.push(p));
+            });
+        });
+    };
+    addSet(yamlData);
+    addSet(compareData);
+    const rect = svg.getBoundingClientRect();
+    if (!pts.length || !rect.width || !rect.height) {
+        canvasState.scale = 100; centerCanvas(); renderCanvas();
+        return;
+    }
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const spanX = Math.max(maxX - minX, 0.1), spanY = Math.max(maxY - minY, 0.1);
+    // X is vertical on screen, Y horizontal; leave room for toolbar/labels
+    const availW = rect.width * 0.85, availH = (rect.height - 100) * 0.85;
+    canvasState.scale = Math.min(availW / spanY, availH / spanX);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    canvasState.offsetX = rect.width / 2 + cy * canvasState.scale;
+    canvasState.offsetY = rect.height / 2 + 40 + cx * canvasState.scale;
+    document.getElementById('zoom-level').textContent = Math.round(canvasState.scale) + '%';
+    renderCanvas();
 }
 
 function setupEventListeners() {
@@ -65,7 +104,8 @@ function setupEventListeners() {
 
     document.getElementById('btn-zoom-in').addEventListener('click', () => { canvasState.scale *= 1.2; renderCanvas(); });
     document.getElementById('btn-zoom-out').addEventListener('click', () => { canvasState.scale *= 0.8; renderCanvas(); });
-    document.getElementById('btn-reset-view').addEventListener('click', () => { canvasState.scale = 100; centerCanvas(); renderCanvas(); });
+    document.getElementById('btn-reset-view').addEventListener('click', () => { fitToView(); });
+    window.addEventListener('resize', () => { if (compareData) { centerCanvas(); renderCanvas(); } });
 
     // Map Panning
     svgWrapper.addEventListener('mousedown', (e) => {
@@ -1027,6 +1067,7 @@ function setCompare(data, name) {
     document.getElementById('btn-compare').textContent = on ? 'Compare: ON' : 'Compare YAML';
     centerCanvas();
     initUI();
+    fitToView();
 }
 
 function cmpStatePoints(data, lidar, type, code) {
