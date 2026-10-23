@@ -119,6 +119,8 @@ function setupEventListeners() {
                 try {
                     const text = ev.target.result;
                     localStorage.setItem('originalYaml', text);
+                    localStorage.setItem('importedFileName', file.name);
+                    showImportedFileName();
                     yamlData = jsyaml.load(text);
                     saveToLocal();
                     initUI();
@@ -295,7 +297,7 @@ function setupEventListeners() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'obstacle_stopper_params_edited.yaml';
+        a.download = localStorage.getItem('importedFileName') || 'obstacle_stopper_params_edited.yaml';
         a.click();
     });
 }
@@ -339,6 +341,7 @@ function saveToLocal() {
 }
 
 function loadYAML() {
+    showImportedFileName();
     const saved = localStorage.getItem('savedYaml');
     if (saved) {
         try {
@@ -348,6 +351,14 @@ function loadYAML() {
             console.error('Error loading YAML from local storage', e);
         }
     }
+}
+
+function showImportedFileName() {
+    const el = document.getElementById('imported-file-name');
+    const name = localStorage.getItem('importedFileName');
+    if (!el) return;
+    el.textContent = name ? 'Imported: ' + name : '';
+    el.title = name || '';
 }
 
 function reloadOriginalYAML() {
