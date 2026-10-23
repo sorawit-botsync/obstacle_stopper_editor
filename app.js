@@ -1,5 +1,7 @@
 // Application State
 let yamlData = null;
+let compareData = null;
+let compareName = '';
 let appState = {
     selectedStateCode: null,
     visibleLidars: new Set(),
@@ -284,6 +286,8 @@ function setupEventListeners() {
         document.getElementById('add-state-code').value = '';
     });
     
+    setupCompareListeners();
+
     // Export UI
     document.getElementById('btn-export').addEventListener('click', showExport);
     document.getElementById('btn-close-modal').addEventListener('click', () => document.getElementById('export-modal').classList.add('hidden'));
@@ -338,6 +342,7 @@ function saveToLocal() {
     if (!yamlData) return;
     const yamlString = jsyaml.dump(yamlData, { indent: 2, lineWidth: -1 });
     localStorage.setItem('savedYaml', yamlString);
+    updateComparePanel();
 }
 
 function loadYAML() {
@@ -469,6 +474,11 @@ function initUI() {
         const statesObj = yamlData.obstacle_stopper_params.lidars[l].states;
         if(statesObj) Object.keys(statesObj).forEach(s => statesSet.add(s));
     });
+    if (compareData && compareData.obstacle_stopper_params && compareData.obstacle_stopper_params.lidars) {
+        Object.values(compareData.obstacle_stopper_params.lidars).forEach(l => {
+            if (l && l.states) Object.keys(l.states).forEach(s => statesSet.add(s));
+        });
+    }
     const states = Array.from(statesSet).sort();
     
     // Setup State Dropdown
@@ -758,6 +768,8 @@ function renderCanvas() {
             }
         });
     });
+    renderCompareCanvas();
+    if (!canvasState.dragVertexInfo) updateComparePanel();
 }
 
 function updateEditorPanel() {
@@ -933,4 +945,236 @@ function showExport() {
     });
     document.getElementById('export-textarea').value = yamlString;
     document.getElementById('export-modal').classList.remove('hidden');
+}
+
+
+// ---------------- Compare mode ----------------
+const cmpSvg = document.getElementById('canvas-compare');
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const FIELD_LABELS = {
+    protective_fields: 'protective polygon / z-limits',
+    warning_fields: 'warning polygon / z-limits',
+    protective_field_sizes: 'protective sizes',
+    warning_field_sizes: 'warning sizes',
+    obstacle_point_threshold: 'obstacle_point_threshold'
+};
+
+function setupCompareListeners() {
+    const modal = document.getElementById('compare-modal');
+    const input = document.getElementById('compare-file-input');
+    document.getElementById('btn-compare').addEventListener('click', () => {
+        if (!yamlData) { alert('Import a main YAML file first.'); return; }
+        document.getElementById('compare-main-name').textContent = localStorage.getItem('importedFileName') || 'current data';
+        document.getElementById('compare-file-name').textContent = compareData ? compareName : 'none selected';
+        document.getElementById('btn-compare-stop').classList.toggle('hidden', !compareData);
+        modal.classList.remove('hidden');
+    });
+    document.getElementById('btn-close-compare-modal').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('btn-compare-import').addEventListener('click', () => input.click());
+    document.getElementById('btn-compare-stop').addEventListener('click', () => {
+        modal.classList.add('hidden');
+        setCompare(null, '');
+    });
+    input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const data = jsyaml.load(ev.target.result);
+                if (!data || !data.obstacle_stopper_params || !data.obstacle_stopper_params.lidars) {
+                    alert('Invalid file: missing obstacle_stopper_params.lidars');
+                    return;
+                }
+                modal.classList.add('hidden');
+                setCompare(data, file.name);
+            } catch (err) {
+                alert('Error parsing YAML file: ' + err);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    });
+
+    // Pan / zoom on the compare pane share the main canvas transform
+    cmpSvg.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        canvasState.scale *= e.deltaY > 0 ? 0.9 : 1.1;
+        document.getElementById('zoom-level').textContent = Math.round(canvasState.scale) + '%';
+        renderCanvas();
+    });
+    cmpSvg.addEventListener('mousedown', (e) => {
+        if (e.target === cmpSvg) {
+            canvasState.isDraggingMap = true;
+            canvasState.dragStartX = e.clientX - canvasState.offsetX;
+            canvasState.dragStartY = e.clientY - canvasState.offsetY;
+        }
+    });
+}
+
+function setCompare(data, name) {
+    compareData = data;
+    compareName = name;
+    const on = !!data;
+    cmpSvg.classList.toggle('hidden', !on);
+    document.getElementById('compare-panel').classList.toggle('hidden', !on);
+    const lm = document.getElementById('pane-label-main');
+    const lc = document.getElementById('pane-label-compare');
+    lm.classList.toggle('hidden', !on);
+    lc.classList.toggle('hidden', !on);
+    lm.textContent = 'Main: ' + (localStorage.getItem('importedFileName') || 'current');
+    lc.textContent = 'Compare: ' + name;
+    document.getElementById('btn-compare').textContent = on ? 'Compare: ON' : 'Compare YAML';
+    centerCanvas();
+    initUI();
+}
+
+function cmpStatePoints(data, lidar, type, code) {
+    const st = data?.obstacle_stopper_params?.lidars?.[lidar]?.states?.[code];
+    if (!st) return null;
+    const f = type === 'protective' ? st.protective_fields : st.warning_fields;
+    return f && f.length > 0 && f[0].points ? f[0].points : null;
+}
+
+function renderCompareCanvas() {
+    if (!compareData) return;
+    const origin = robotToScreen(0, 0);
+    const xEnd = robotToScreen(5, 0);
+    const yEnd = robotToScreen(0, 5);
+    const ax = document.getElementById('cmp-axis-x');
+    const ay = document.getElementById('cmp-axis-y');
+    ax.setAttribute('x1', origin.cx); ax.setAttribute('y1', origin.cy);
+    ax.setAttribute('x2', xEnd.cx); ax.setAttribute('y2', xEnd.cy);
+    ay.setAttribute('x1', origin.cx); ay.setAttribute('y1', origin.cy);
+    ay.setAttribute('x2', yEnd.cx); ay.setAttribute('y2', yEnd.cy);
+
+    const addPoly = (g, pts, cls) => {
+        const poly = document.createElementNS(SVG_NS, 'polygon');
+        poly.setAttribute('points', pts.map(p => { const sc = robotToScreen(p[0], p[1]); return `${sc.cx},${sc.cy}`; }).join(' '));
+        poly.setAttribute('class', `polygon-shape ${cls}`);
+        g.appendChild(poly);
+    };
+
+    const gF = document.getElementById('cmp-footprint-group');
+    const gP = document.getElementById('cmp-polygons-group');
+    gF.innerHTML = '';
+    gP.innerHTML = '';
+    const fp = compareData.obstacle_stopper_params.global_defaults?.robot_footprint;
+    if (fp) addPoly(gF, fp, 'polygon-footprint');
+
+    const code = appState.selectedStateCode;
+    const cmpLidars = compareData.obstacle_stopper_params.lidars;
+    let anyMissing = false;
+    appState.visibleLidars.forEach(lidar => {
+        if (!cmpLidars[lidar] || !cmpLidars[lidar].states?.[code]) {
+            const inMain = yamlData.obstacle_stopper_params.lidars[lidar]?.states?.[code];
+            if (inMain) anyMissing = true;
+            return;
+        }
+        ['protective', 'warning'].forEach(type => {
+            if (type === 'protective' && !appState.showProtective) return;
+            if (type === 'warning' && !appState.showWarning) return;
+            if (appState.hiddenFields.has(`${lidar}-${type}`)) return;
+            const pts = cmpStatePoints(compareData, lidar, type, code);
+            if (pts) addPoly(gP, pts, `polygon-${type}`);
+        });
+    });
+
+    const msg = document.getElementById('cmp-message');
+    const rect = cmpSvg.getBoundingClientRect();
+    msg.setAttribute('x', rect.width / 2);
+    msg.setAttribute('y', rect.height - 30);
+    msg.textContent = anyMissing ? `State ${code} is missing for some lidars in compared file` : '';
+}
+
+function stableStr(v) {
+    if (Array.isArray(v)) return '[' + v.map(stableStr).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStr(v[k])).join(',') + '}';
+    return JSON.stringify(v);
+}
+
+function computeDiff() {
+    const mL = yamlData.obstacle_stopper_params.lidars || {};
+    const cL = compareData.obstacle_stopper_params.lidars || {};
+    const lidars = Array.from(new Set([...Object.keys(mL), ...Object.keys(cL)])).sort();
+    const codes = new Set();
+    lidars.forEach(l => {
+        Object.keys(mL[l]?.states || {}).forEach(c => codes.add(c));
+        Object.keys(cL[l]?.states || {}).forEach(c => codes.add(c));
+    });
+    const result = [];
+    Array.from(codes).sort().forEach(code => {
+        const details = [];
+        let onlyMain = 0, onlyCmp = 0, diff = 0, same = 0;
+        lidars.forEach(l => {
+            const m = mL[l]?.states?.[code];
+            const c = cL[l]?.states?.[code];
+            if (m && !c) { onlyMain++; details.push(`${l}: missing in compare`); }
+            else if (!m && c) { onlyCmp++; details.push(`${l}: missing in main`); }
+            else if (m && c) {
+                const keys = new Set([...Object.keys(m), ...Object.keys(c)]);
+                const changed = Array.from(keys).filter(k => stableStr(m[k]) !== stableStr(c[k]));
+                if (changed.length) {
+                    diff++;
+                    details.push(`${l}: ${changed.map(k => FIELD_LABELS[k] || k).join(', ')}`);
+                } else same++;
+            }
+        });
+        let status;
+        if (onlyMain && !onlyCmp && !diff && !same) status = 'missing-compare';
+        else if (onlyCmp && !onlyMain && !diff && !same) status = 'missing-main';
+        else if (onlyMain || onlyCmp || diff) status = 'diff';
+        else status = 'same';
+        result.push({ code, status, details });
+    });
+    return result;
+}
+
+function updateComparePanel() {
+    if (!compareData || !yamlData) return;
+    const list = document.getElementById('compare-list');
+    const summary = document.getElementById('compare-summary');
+    const items = computeDiff();
+    list.innerHTML = '';
+
+    const fpM = yamlData.obstacle_stopper_params.global_defaults?.robot_footprint;
+    const fpC = compareData.obstacle_stopper_params.global_defaults?.robot_footprint;
+    const fpDiff = stableStr(fpM) !== stableStr(fpC);
+
+    const tagText = { 'diff': 'Different', 'missing-main': 'Missing in main', 'missing-compare': 'Missing in compare', 'same': 'Same' };
+    const shown = items.filter(i => i.status !== 'same');
+    summary.textContent = `${shown.length} of ${items.length} state codes differ` + (fpDiff ? ' · robot_footprint differs' : '');
+
+    const addItem = (title, status, details, code) => {
+        const el = document.createElement('div');
+        el.className = 'cmp-item' + (code !== undefined && code === appState.selectedStateCode ? ' active' : '');
+        const tagCls = status === 'diff' ? 'cmp-tag-diff' : status === 'same' ? 'cmp-tag-same' : 'cmp-tag-missing';
+        el.innerHTML = `<div class="cmp-item-head"><span></span><span class="cmp-tag ${tagCls}">${tagText[status]}</span></div>`;
+        el.querySelector('span').textContent = title;
+        details.forEach(d => {
+            const dv = document.createElement('div');
+            dv.className = 'cmp-detail';
+            dv.textContent = d;
+            el.appendChild(dv);
+        });
+        if (code !== undefined) {
+            el.addEventListener('click', () => {
+                appState.selectedStateCode = code;
+                appState.selectedPolygon = null;
+                document.getElementById('state-select').value = code;
+                renderCanvas();
+                updateEditorPanel();
+            });
+        }
+        list.appendChild(el);
+    };
+
+    if (fpDiff) addItem('robot_footprint', 'diff', ['global_defaults differs'], undefined);
+    shown.forEach(i => addItem(`State ${i.code}`, i.status, i.details, i.code));
+    if (!shown.length && !fpDiff) {
+        const el = document.createElement('p');
+        el.className = 'text-muted';
+        el.textContent = 'Files are identical.';
+        list.appendChild(el);
+    }
 }
