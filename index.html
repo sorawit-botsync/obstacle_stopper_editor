@@ -140,6 +140,7 @@
                     </g>
                     <g id="cmp-footprint-group"></g>
                     <g id="cmp-polygons-group"></g>
+                    <g id="cmp-vertices-group"></g>
                     <text id="cmp-message" class="axis-label cmp-message" text-anchor="middle"></text>
                 </svg>
                 <div id="pane-label-main" class="pane-label hidden"></div>
@@ -229,6 +230,12 @@
             <div class="modal-header">
                 <h3>Exported YAML</h3>
                 <button id="btn-close-modal" class="icon-btn">×</button>
+            </div>
+            <div id="export-source-row" class="hidden" style="padding: 8px 20px;">
+                <select id="export-source" class="input-modern">
+                    <option value="main">Main file</option>
+                    <option value="compare">Compared file</option>
+                </select>
             </div>
             <textarea id="export-textarea" readonly></textarea>
             <div class="modal-footer">

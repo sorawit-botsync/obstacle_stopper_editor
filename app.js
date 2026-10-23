@@ -31,6 +31,7 @@ const gAxes = document.getElementById('axes-group');
 const gFootprint = document.getElementById('footprint-group');
 const gPolygons = document.getElementById('polygons-group');
 const gVertices = document.getElementById('vertices-group');
+const gCmpVertices = document.getElementById('cmp-vertices-group');
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -124,11 +125,11 @@ function setupEventListeners() {
         }
         
         if (canvasState.dragVertexInfo) {
-            const { lidar, type, index } = canvasState.dragVertexInfo;
+            const { lidar, type, index, side } = canvasState.dragVertexInfo;
             // Convert screen coordinates back to robot coordinates
-            const { x, y } = screenToRobot(e.clientX, e.clientY);
+            const { x, y } = screenToRobot(e.clientX, e.clientY, side);
             // Update YAML data
-            const pts = getPolygonPoints(lidar, type);
+            const pts = getPolygonPoints(lidar, type, side);
             pts[index][0] = parseFloat(x.toFixed(3));
             pts[index][1] = parseFloat(y.toFixed(3));
             
@@ -327,6 +328,7 @@ function setupEventListeners() {
     });
     
     setupCompareListeners();
+    document.getElementById('export-source').addEventListener('change', fillExport);
 
     // Export UI
     document.getElementById('btn-export').addEventListener('click', showExport);
@@ -341,7 +343,8 @@ function setupEventListeners() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = localStorage.getItem('importedFileName') || 'obstacle_stopper_params_edited.yaml';
+        a.download = (document.getElementById('export-source').value === 'compare' && compareName) ||
+            localStorage.getItem('importedFileName') || 'obstacle_stopper_params_edited.yaml';
         a.click();
     });
 }
@@ -357,8 +360,12 @@ function robotToScreen(x, y) {
     };
 }
 
-function screenToRobot(clientX, clientY) {
-    const rect = svg.getBoundingClientRect();
+function dataOf(side) {
+    return side === 'compare' ? compareData : yamlData;
+}
+
+function screenToRobot(clientX, clientY, side) {
+    const rect = (side === 'compare' ? cmpSvg : svg).getBoundingClientRect();
     const cx = clientX - rect.left;
     const cy = clientY - rect.top;
     
@@ -570,11 +577,13 @@ function initUI() {
     renderCanvas();
 }
 
-function getPolygonPoints(lidarName, type) {
+function getPolygonPoints(lidarName, type, side = 'main') {
+    const data = dataOf(side);
+    if (!data) return null;
     if (type === 'footprint') {
-        return yamlData.obstacle_stopper_params.global_defaults.robot_footprint;
+        return data.obstacle_stopper_params.global_defaults?.robot_footprint;
     }
-    const lData = yamlData.obstacle_stopper_params.lidars[lidarName];
+    const lData = data.obstacle_stopper_params.lidars[lidarName];
     if(!lData || !lData.states || !lData.states[appState.selectedStateCode]) return null;
     
     const stateObj = lData.states[appState.selectedStateCode];
@@ -588,7 +597,8 @@ function getPolygonPoints(lidarName, type) {
 
 // Lightweight update: just restyle existing vertex circles without recreating them
 function highlightActiveVertex() {
-    Array.from(gVertices.children).forEach((el, i) => {
+    const g = appState.selectedPolygon?.side === 'compare' ? gCmpVertices : gVertices;
+    Array.from(g.children).forEach((el, i) => {
         const isActive = appState.selectedVertexIndex === i;
         el.setAttribute('class', `vertex-handle${isActive ? ' vertex-handle-active' : ''}`);
     });
@@ -619,124 +629,39 @@ function renderCanvas() {
     xLabel.setAttribute('x', xEnd.cx + 5); xLabel.setAttribute('y', xEnd.cy - 5);
     yLabel.setAttribute('x', yEnd.cx + 5); yLabel.setAttribute('y', yEnd.cy - 5);
 
-    // Render Footprint
-    gFootprint.innerHTML = '';
-    gVertices.innerHTML = '';
-    
-    const fp = yamlData.obstacle_stopper_params.global_defaults.robot_footprint;
-    if (fp) {
-        const pts = fp.map(p => {
-            const sc = robotToScreen(p[0], p[1]);
-            return `${sc.cx},${sc.cy}`;
-        }).join(' ');
-        const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        poly.setAttribute('points', pts);
-        
-        let isSelected = appState.selectedPolygon && appState.selectedPolygon.type === 'footprint';
-        poly.setAttribute('class', `polygon-shape polygon-footprint ${isSelected ? 'selected' : ''}`);
-        
+    renderPane('main');
+    renderCompareCanvas();
+    if (!canvasState.dragVertexInfo) updateComparePanel();
+}
+
+// Render footprint, lidar fields and (for the selected one) vertex handles of one side
+function renderPane(side) {
+    const data = dataOf(side);
+    const isCmp = side === 'compare';
+    const gF = isCmp ? document.getElementById('cmp-footprint-group') : gFootprint;
+    const gP = isCmp ? document.getElementById('cmp-polygons-group') : gPolygons;
+    const gV = isCmp ? gCmpVertices : gVertices;
+    gF.innerHTML = '';
+    gP.innerHTML = '';
+    gV.innerHTML = '';
+    if (!data) return;
+
+    const sel = appState.selectedPolygon;
+    const selOnSide = sel && (sel.side || 'main') === side;
+    const select = (lidar, type) => {
+        appState.selectedPolygon = { lidar, type, side };
+    };
+
+    // Shared interaction wiring for a polygon + its points array
+    const wirePolygon = (poly, pts, lidar, type, isSelected) => {
         poly.addEventListener('click', (e) => {
-            e.stopPropagation();
-            appState.selectedPolygon = { lidar: 'global', type: 'footprint' };
+            e.stopPropagation(); // Prevent map drag
+            select(lidar, type);
             appState.selectedVertexIndex = null;
             renderCanvas();
             updateEditorPanel();
         });
-        poly.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!isSelected) {
-                appState.selectedPolygon = { lidar: 'global', type: 'footprint' };
-                renderCanvas();
-                updateEditorPanel();
-                return;
-            }
-            const rCoord = screenToRobot(e.clientX, e.clientY);
-            let minSubDist = Infinity;
-            let insertIdx = -1;
-            for (let i = 0; i < fp.length; i++) {
-                const p1 = fp[i];
-                const p2 = fp[(i + 1) % fp.length];
-                const dist = distToSegmentSquared(rCoord, p1, p2);
-                if (dist < minSubDist) {
-                    minSubDist = dist;
-                    insertIdx = i + 1;
-                }
-            }
-            fp.splice(insertIdx, 0, [rCoord.x, rCoord.y]);
-            saveToLocal();
-            renderCanvas();
-            updateEditorPanel();
-        });
-        
-        gFootprint.appendChild(poly);
-        
-        if (isSelected) {
-            fp.forEach((p, idx) => {
-                const sc = robotToScreen(p[0], p[1]);
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', sc.cx);
-                circle.setAttribute('cy', sc.cy);
-                circle.setAttribute('r', '4');
-                const isActiveV = appState.selectedVertexIndex === idx;
-                circle.setAttribute('class', `vertex-handle${isActiveV ? ' vertex-handle-active' : ''}`);
-                
-                circle.addEventListener('mousedown', (e) => {
-                    e.stopPropagation();
-                    canvasState.dragVertexInfo = { lidar: 'global', type: 'footprint', index: idx };
-                    appState.selectedVertexIndex = idx;
-                    highlightActiveVertex();
-                    updateEditorPanel();
-                });
-                circle.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    if (fp.length <= 3) return; // keep minimum 3 vertices
-                    fp.splice(idx, 1);
-                    appState.selectedVertexIndex = null;
-                    saveToLocal();
-                    renderCanvas();
-                    updateEditorPanel();
-                });
-                
-                gVertices.appendChild(circle);
-            });
-        }
-    }
-    
-    // Render Lidar Fields
-    gPolygons.innerHTML = '';
-    
-    appState.visibleLidars.forEach(lidar => {
-        ['protective', 'warning'].forEach(type => {
-            if (type === 'protective' && !appState.showProtective) return;
-            if (type === 'warning' && !appState.showWarning) return;
-            
-            if (appState.hiddenFields.has(`${lidar}-${type}`)) return;
-            
-            const pts = getPolygonPoints(lidar, type);
-            if (!pts) return;
-            
-            // Draw Polygon
-            const screenPts = pts.map(p => {
-                const sc = robotToScreen(p[0], p[1]);
-                return `${sc.cx},${sc.cy}`;
-            }).join(' ');
-            
-            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            poly.setAttribute('points', screenPts);
-            
-            let isSelected = appState.selectedPolygon && 
-                             appState.selectedPolygon.lidar === lidar && 
-                             appState.selectedPolygon.type === type;
-                             
-            poly.setAttribute('class', `polygon-shape polygon-${type} ${isSelected ? 'selected' : ''}`);
-            poly.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent map drag
-                appState.selectedPolygon = { lidar, type };
-                appState.selectedVertexIndex = null;
-                renderCanvas();
-                updateEditorPanel();
-            });
+        if (type !== 'footprint') {
             poly.addEventListener('dblclick', (e) => {
                 e.stopPropagation();
                 appState.hiddenFields.add(`${lidar}-${type}`);
@@ -746,70 +671,103 @@ function renderCanvas() {
                 }
                 renderCanvas();
             });
-            poly.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
+        }
+        poly.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isSelected) {
+                select(lidar, type);
+                renderCanvas();
+                updateEditorPanel();
+                return;
+            }
+            const rCoord = screenToRobot(e.clientX, e.clientY, side);
+            let minSubDist = Infinity;
+            let insertIdx = -1;
+            for (let i = 0; i < pts.length; i++) {
+                const p1 = pts[i];
+                const p2 = pts[(i + 1) % pts.length];
+                const dist = distToSegmentSquared(rCoord, p1, p2);
+                if (dist < minSubDist) {
+                    minSubDist = dist;
+                    insertIdx = i + 1;
+                }
+            }
+            pts.splice(insertIdx, 0, [rCoord.x, rCoord.y]);
+            saveToLocal();
+            renderCanvas();
+            updateEditorPanel();
+        });
+    };
+
+    const drawVertices = (pts, lidar, type) => {
+        pts.forEach((p, idx) => {
+            const sc = robotToScreen(p[0], p[1]);
+            const circle = document.createElementNS(SVG_NS, 'circle');
+            circle.setAttribute('cx', sc.cx);
+            circle.setAttribute('cy', sc.cy);
+            circle.setAttribute('r', '4');
+            const isActiveV = appState.selectedVertexIndex === idx;
+            circle.setAttribute('class', `vertex-handle${isActiveV ? ' vertex-handle-active' : ''}`);
+            
+            circle.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
-                if (!isSelected) {
-                    appState.selectedPolygon = { lidar, type };
-                    renderCanvas();
-                    updateEditorPanel();
-                    return;
-                }
-                const rCoord = screenToRobot(e.clientX, e.clientY);
-                let minSubDist = Infinity;
-                let insertIdx = -1;
-                for (let i = 0; i < pts.length; i++) {
-                    const p1 = pts[i];
-                    const p2 = pts[(i + 1) % pts.length];
-                    const dist = distToSegmentSquared(rCoord, p1, p2);
-                    if (dist < minSubDist) {
-                        minSubDist = dist;
-                        insertIdx = i + 1;
-                    }
-                }
-                pts.splice(insertIdx, 0, [rCoord.x, rCoord.y]);
+                canvasState.dragVertexInfo = { lidar, type, index: idx, side };
+                appState.selectedVertexIndex = idx;
+                highlightActiveVertex();
+                updateEditorPanel();
+            });
+            circle.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                if (pts.length <= 3) return; // keep minimum 3 vertices
+                pts.splice(idx, 1);
+                appState.selectedVertexIndex = null;
                 saveToLocal();
                 renderCanvas();
                 updateEditorPanel();
             });
+            gV.appendChild(circle);
+        });
+    };
+
+    // Footprint
+    const fp = data.obstacle_stopper_params.global_defaults?.robot_footprint;
+    if (fp) {
+        const poly = document.createElementNS(SVG_NS, 'polygon');
+        poly.setAttribute('points', fp.map(p => {
+            const sc = robotToScreen(p[0], p[1]);
+            return `${sc.cx},${sc.cy}`;
+        }).join(' '));
+        const isSelected = selOnSide && sel.type === 'footprint';
+        poly.setAttribute('class', `polygon-shape polygon-footprint ${isSelected ? 'selected' : ''}`);
+        wirePolygon(poly, fp, 'global', 'footprint', isSelected);
+        gF.appendChild(poly);
+        if (isSelected) drawVertices(fp, 'global', 'footprint');
+    }
+
+    // Lidar Fields
+    appState.visibleLidars.forEach(lidar => {
+        ['protective', 'warning'].forEach(type => {
+            if (type === 'protective' && !appState.showProtective) return;
+            if (type === 'warning' && !appState.showWarning) return;
+            if (appState.hiddenFields.has(`${lidar}-${type}`)) return;
             
-            gPolygons.appendChild(poly);
+            const pts = getPolygonPoints(lidar, type, side);
+            if (!pts) return;
             
-            // Draw Vertices if Selected
-            if (isSelected) {
-                pts.forEach((p, idx) => {
-                    const sc = robotToScreen(p[0], p[1]);
-                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                    circle.setAttribute('cx', sc.cx);
-                    circle.setAttribute('cy', sc.cy);
-                    circle.setAttribute('r', '4');
-                    const isActiveV = appState.selectedVertexIndex === idx;
-                    circle.setAttribute('class', `vertex-handle${isActiveV ? ' vertex-handle-active' : ''}`);
-                    
-                    circle.addEventListener('mousedown', (e) => {
-                        e.stopPropagation();
-                        canvasState.dragVertexInfo = { lidar, type, index: idx };
-                        appState.selectedVertexIndex = idx;
-                        highlightActiveVertex();
-                        updateEditorPanel();
-                    });
-                    circle.addEventListener('dblclick', (e) => {
-                        e.stopPropagation();
-                        if (pts.length <= 3) return; // keep minimum 3 vertices
-                        pts.splice(idx, 1);
-                        appState.selectedVertexIndex = null;
-                        saveToLocal();
-                        renderCanvas();
-                        updateEditorPanel();
-                    });
-                    
-                    gVertices.appendChild(circle);
-                });
-            }
+            const poly = document.createElementNS(SVG_NS, 'polygon');
+            poly.setAttribute('points', pts.map(p => {
+                const sc = robotToScreen(p[0], p[1]);
+                return `${sc.cx},${sc.cy}`;
+            }).join(' '));
+            const isSelected = selOnSide && sel.lidar === lidar && sel.type === type;
+            poly.setAttribute('class', `polygon-shape polygon-${type} ${isSelected ? 'selected' : ''}`);
+            wirePolygon(poly, pts, lidar, type, isSelected);
+            gP.appendChild(poly);
+            
+            if (isSelected) drawVertices(pts, lidar, type);
         });
     });
-    renderCompareCanvas();
-    if (!canvasState.dragVertexInfo) updateComparePanel();
 }
 
 function updateEditorPanel() {
@@ -832,21 +790,23 @@ function updateEditorPanel() {
     vertexPanelContent.classList.remove('hidden');
     
     const { lidar, type } = appState.selectedPolygon;
+    const side = appState.selectedPolygon.side || 'main';
+    const sideTag = side === 'compare' ? ' (compare)' : '';
     
     if (type === 'footprint') {
-        document.getElementById('editor-badge').textContent = `Robot Footprint`;
+        document.getElementById('editor-badge').textContent = `Robot Footprint${sideTag}`;
         document.getElementById('editor-badge').className = `badge bg-blue`;
         document.getElementById('threshold-container').classList.add('hidden');
         document.getElementById('standard-limits-container').classList.add('hidden');
         document.getElementById('z-limits-container').classList.add('hidden');
     } else {
-        document.getElementById('editor-badge').textContent = `${lidar} - ${type}`;
+        document.getElementById('editor-badge').textContent = `${lidar} - ${type}${sideTag}`;
         document.getElementById('editor-badge').className = `badge bg-${type === 'protective' ? 'green' : 'yellow'}`;
         document.getElementById('threshold-container').classList.remove('hidden');
         document.getElementById('standard-limits-container').classList.remove('hidden');
         document.getElementById('z-limits-container').classList.remove('hidden');
         
-        const stateObj = yamlData.obstacle_stopper_params.lidars[lidar].states[appState.selectedStateCode];
+        const stateObj = dataOf(side).obstacle_stopper_params.lidars[lidar].states[appState.selectedStateCode];
         
         // Threshold
         const thresholdInput = document.getElementById('input-obstacle-threshold');
@@ -889,7 +849,7 @@ function updateEditorPanel() {
         bindInput('input-right-min', 'right_min');
         
         // Z-Limits (visible only for 3D lidars)
-        const lidarObj = yamlData.obstacle_stopper_params.lidars[lidar];
+        const lidarObj = dataOf(side).obstacle_stopper_params.lidars[lidar];
         const zContainer = document.getElementById('z-limits-container');
         
         if (lidarObj.type === '3d') {
@@ -924,7 +884,7 @@ function updateEditorPanel() {
     const vContainer = document.getElementById('vertex-inputs-container');
     vContainer.innerHTML = '';
     
-    const pts = getPolygonPoints(lidar, type);
+    const pts = getPolygonPoints(lidar, type, side);
     if (pts) {
         pts.forEach((p, idx) => {
             const row = document.createElement('div');
@@ -977,13 +937,20 @@ function updateEditorPanel() {
     }
 }
 
-function showExport() {
-    if (!yamlData) return;
-    const yamlString = jsyaml.dump(yamlData, {
+function fillExport() {
+    const src = document.getElementById('export-source').value;
+    const data = src === 'compare' && compareData ? compareData : yamlData;
+    document.getElementById('export-textarea').value = jsyaml.dump(data, {
         indent: 2,
         lineWidth: -1 // Disable line wrapping
     });
-    document.getElementById('export-textarea').value = yamlString;
+}
+
+function showExport() {
+    if (!yamlData) return;
+    document.getElementById('export-source-row').classList.toggle('hidden', !compareData);
+    if (!compareData) document.getElementById('export-source').value = 'main';
+    fillExport();
     document.getElementById('export-modal').classList.remove('hidden');
 }
 
@@ -1089,36 +1056,15 @@ function renderCompareCanvas() {
     ay.setAttribute('x1', origin.cx); ay.setAttribute('y1', origin.cy);
     ay.setAttribute('x2', yEnd.cx); ay.setAttribute('y2', yEnd.cy);
 
-    const addPoly = (g, pts, cls) => {
-        const poly = document.createElementNS(SVG_NS, 'polygon');
-        poly.setAttribute('points', pts.map(p => { const sc = robotToScreen(p[0], p[1]); return `${sc.cx},${sc.cy}`; }).join(' '));
-        poly.setAttribute('class', `polygon-shape ${cls}`);
-        g.appendChild(poly);
-    };
-
-    const gF = document.getElementById('cmp-footprint-group');
-    const gP = document.getElementById('cmp-polygons-group');
-    gF.innerHTML = '';
-    gP.innerHTML = '';
-    const fp = compareData.obstacle_stopper_params.global_defaults?.robot_footprint;
-    if (fp) addPoly(gF, fp, 'polygon-footprint');
+    renderPane('compare');
 
     const code = appState.selectedStateCode;
     const cmpLidars = compareData.obstacle_stopper_params.lidars;
     let anyMissing = false;
     appState.visibleLidars.forEach(lidar => {
         if (!cmpLidars[lidar] || !cmpLidars[lidar].states?.[code]) {
-            const inMain = yamlData.obstacle_stopper_params.lidars[lidar]?.states?.[code];
-            if (inMain) anyMissing = true;
-            return;
+            if (yamlData.obstacle_stopper_params.lidars[lidar]?.states?.[code]) anyMissing = true;
         }
-        ['protective', 'warning'].forEach(type => {
-            if (type === 'protective' && !appState.showProtective) return;
-            if (type === 'warning' && !appState.showWarning) return;
-            if (appState.hiddenFields.has(`${lidar}-${type}`)) return;
-            const pts = cmpStatePoints(compareData, lidar, type, code);
-            if (pts) addPoly(gP, pts, `polygon-${type}`);
-        });
     });
 
     const msg = document.getElementById('cmp-message');
